@@ -1,0 +1,21 @@
+# Data collection
+sec-edgar-downloader  # pull 13F filings from SEC EDGAR
+requests              # CUSIP → ticker mapping via OpenFIGI
+pykrx                 # Korean stock price data
+FinanceDataReader     # Korean stock listings + fundamentals
+yfinance              # US stock fundamentals (rev growth, gross margin, P/S)
+
+# ML + feature engineering
+scikit-learn
+numpy
+pandas
+
+# Visualization
+matplotlib
+seaborn
+
+# Utilities
+tqdm
+openpyxl      # export results to Excel
+python-dotenv
+jupyter
