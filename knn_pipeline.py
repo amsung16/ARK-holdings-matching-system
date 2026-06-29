@@ -1,5 +1,7 @@
 import yfinance as yf
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 from tqdm import tqdm
 import FinanceDataReader as fdr
 
@@ -33,8 +35,38 @@ def get_korean_universe():
    kospi = kospi.nlargest(200, 'Marcap').reset_index(drop=True)
    return kospi[['Code', 'Name', 'Dept', 'Marcap']]
 
-def get_korean_fundamentals(tickers):
-   '''pulls same metrics for Korean stocks via FinanceDataReader / Naver API'''
+
+def get_korean_fundamentals(kr_universe):
+   '''pulls PER, PBR, market_cap for KOSPI stocks via Naver Finance'''
+   headers = {'User-Agent': 'Mozilla/5.0'}
+
+   def _scrape(code):
+      r = requests.get(f'https://finance.naver.com/item/main.naver?code={code}',
+                       headers=headers, timeout=5)
+      soup = BeautifulSoup(r.text, 'html.parser')
+      table = soup.find('table', {'class': 'per_table'})
+      if not table:
+         return None, None
+      tds = table.find_all('td')
+      per = float(tds[0].get_text(strip=True).split('배')[0].replace(',', ''))
+      pbr = float(tds[2].get_text(strip=True).split('배')[0].replace(',', ''))
+      return per, pbr
+
+   records = []
+   for _, row in tqdm(kr_universe.iterrows(), total=len(kr_universe), desc='Fetching Korean fundamentals'):
+      code = row['Code']
+      try:
+         per, pbr = _scrape(code)
+         records.append({
+            'Code':       code,
+            'company':    row['Name'],
+            'market_cap': row['Marcap'],
+            'per':        per,
+            'pbr':        pbr,
+         })
+      except Exception:
+         continue
+   return pd.DataFrame(records)
 
 def map_themes(df, sector_col, mapping_dict):
    '''maps GICS sector (US) or KRX sector (Korean) to shared theme labels
