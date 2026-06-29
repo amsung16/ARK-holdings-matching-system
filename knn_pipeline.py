@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 from tqdm import tqdm
+import FinanceDataReader as fdr
 
 def get_ark_fundamentals(tickers):
    '''loops through ARK tickers, calls yfinance, 
@@ -23,10 +24,14 @@ def get_ark_fundamentals(tickers):
       except Exception as e:
          continue
    return pd.DataFrame(records)
+
    
 
 def get_korean_universe():
    '''pulls KOSPI 200 list from FinanceDataReader, returns top 200 by market cap'''
+   kospi = fdr.StockListing('KOSPI')
+   kospi = kospi.nlargest(200, 'Marcap').reset_index(drop=True)
+   return kospi[['Code', 'Name', 'Dept', 'Marcap']]
 
 def get_korean_fundamentals(tickers):
    '''pulls same metrics for Korean stocks via FinanceDataReader / Naver API'''
