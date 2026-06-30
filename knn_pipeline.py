@@ -37,7 +37,7 @@ def get_korean_universe():
 
 
 def get_korean_fundamentals(kr_universe):
-   '''pulls PER, PBR, market_cap for KOSPI stocks via Naver Finance'''
+   '''pulls PER, PBR, market_cap, sector for KOSPI stocks via Naver Finance'''
    headers = {'User-Agent': 'Mozilla/5.0'}
 
    def _scrape(code):
@@ -45,32 +45,95 @@ def get_korean_fundamentals(kr_universe):
                        headers=headers, timeout=5)
       soup = BeautifulSoup(r.text, 'html.parser')
       table = soup.find('table', {'class': 'per_table'})
-      if not table:
-         return None, None
       tds = table.find_all('td')
       per = float(tds[0].get_text(strip=True).split('배')[0].replace(',', ''))
       pbr = float(tds[2].get_text(strip=True).split('배')[0].replace(',', ''))
-      return per, pbr
+      sector_tag = soup.find('a', href=lambda h: h and 'upjong' in h and 'sise_group_detail' in h)
+      sector = sector_tag.get_text(strip=True) if sector_tag else None
+      return per, pbr, sector
 
    records = []
    for _, row in tqdm(kr_universe.iterrows(), total=len(kr_universe), desc='Fetching Korean fundamentals'):
       code = row['Code']
       try:
-         per, pbr = _scrape(code)
+         per, pbr, sector = _scrape(code)
          records.append({
             'Code':       code,
             'company':    row['Name'],
             'market_cap': row['Marcap'],
             'per':        per,
             'pbr':        pbr,
+            'sector':     sector,
          })
       except Exception:
          continue
    return pd.DataFrame(records)
 
+US_THEME_MAP = {
+    'Technology':             'AI/Tech',
+    'Healthcare':             'Genomics/Bio',
+    'Consumer Cyclical':      'EV/Consumer',
+    'Financial Services':     'Fintech',
+    'Industrials':            'Defense/Industrial',
+    'Communication Services': 'Internet/SaaS',
+    'Energy':                 'Energy/Climate',
+}
+
+KR_THEME_MAP = {
+    '반도체와반도체장비': 'AI/Tech',
+    '전자장비와기기':     'AI/Tech',
+    'IT서비스':           'AI/Tech',
+    '소프트웨어':         'AI/Tech',
+    '통신장비':           'AI/Tech',
+    '디스플레이패널':     'AI/Tech',
+    '전자제품':           'AI/Tech',
+    '제약':               'Genomics/Bio',
+    '자동차':             'EV/Consumer',
+    '자동차부품':         'EV/Consumer',
+    '전기장비':           'EV/Consumer',
+    '전기제품':           'EV/Consumer',
+    '화장품':             'EV/Consumer',
+    '식품':               'EV/Consumer',
+    '백화점과일반상점':   'EV/Consumer',
+    '섬유,의류,신발,호화품': 'EV/Consumer',
+    '항공사':             'EV/Consumer',
+    '가정용기기와용품':   'EV/Consumer',
+    '호텔,레스토랑,레저': 'EV/Consumer',
+    '은행':               'Fintech',
+    '증권':               'Fintech',
+    '손해보험':           'Fintech',
+    '생명보험':           'Fintech',
+    '카드':               'Fintech',
+    '기계':               'Defense/Industrial',
+    '우주항공과국방':     'Defense/Industrial',
+    '조선':               'Defense/Industrial',
+    '건설':               'Defense/Industrial',
+    '철강':               'Defense/Industrial',
+    '비철금속':           'Defense/Industrial',
+    '해운사':             'Defense/Industrial',
+    '항공화물운송과물류': 'Defense/Industrial',
+    '건축자재':           'Defense/Industrial',
+    '상업서비스와공급품': 'Defense/Industrial',
+    '무역회사와판매업체': 'Defense/Industrial',
+    '게임엔터테인먼트':   'Internet/SaaS',
+    '양방향미디어와서비스': 'Internet/SaaS',
+    '무선통신서비스':     'Internet/SaaS',
+    '다각화된통신서비스': 'Internet/SaaS',
+    '방송과엔터테인먼트': 'Internet/SaaS',
+    '광고':               'Internet/SaaS',
+    '에너지장비및서비스': 'Energy/Climate',
+    '석유와가스':         'Energy/Climate',
+    '전기유틸리티':       'Energy/Climate',
+    '가스유틸리티':       'Energy/Climate',
+    '화학':               'Energy/Climate',
+}
+
 def map_themes(df, sector_col, mapping_dict):
    '''maps GICS sector (US) or KRX sector (Korean) to shared theme labels
    →used on both DataFrames before KNN'''
+   df = df.copy()
+   df['theme'] = df[sector_col].map(mapping_dict)
+   return df
 
 def build_feature_matrix(df, features):
    '''selects feature columns, drops rows with nulls, returns clean DataFrame'''
