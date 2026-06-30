@@ -155,6 +155,11 @@ def run_knn(ark_scaled, kr_scaled, k=3):
    '''fits NearestNeighbors on kr_scaled
    queries with ark_scaled
    returns distances, indices'''
+   from sklearn.neighbors import NearestNeighbors
+   nn = NearestNeighbors(n_neighbors=k, metric='euclidean')
+   nn.fit(kr_scaled)
+   distances, indices = nn.kneighbors(ark_scaled)
+   return distances, indices
 
 def build_output(ark_df, kr_df, distances, indices):
    '''combines ARK stock + 3 Korean matches + distance scores into one DataFrame
