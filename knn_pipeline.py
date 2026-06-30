@@ -1,3 +1,4 @@
+from sklearn.preprocessing import StandardScaler
 import yfinance as yf
 import pandas as pd
 import requests
@@ -60,7 +61,7 @@ def get_korean_fundamentals(kr_universe):
          records.append({
             'Code':       code,
             'company':    row['Name'],
-            'market_cap': row['Marcap'],
+            'market_cap': row['Marcap'] / 1350,  # KRW → USD
             'per':        per,
             'pbr':        pbr,
             'sector':     sector,
@@ -137,11 +138,18 @@ def map_themes(df, sector_col, mapping_dict):
 
 def build_feature_matrix(df, features):
    '''selects feature columns, drops rows with nulls, returns clean DataFrame'''
-   return df[features].dropna().reset_index(drop=True)
+   matrix = df[features + ['Sym' if 'Sym' in df.columns else 'Code']].copy()
+   matrix = matrix.dropna(subset=features)
+   matrix = matrix.reset_index(drop=True)
+   return matrix
 
 def scale_features(ark_df, kr_df, features):
     '''fits StandardScaler on ARK, transforms both
     returns ark_scaled, kr_scaled as numpy arrays'''
+    scaler = StandardScaler()
+    ark_scaled = scaler.fit_transform(ark_df[features])
+    kr_scaled  = scaler.transform(kr_df[features])   # same scaler — do not refit
+    return ark_scaled, kr_scaled
 
 def run_knn(ark_scaled, kr_scaled, k=3):
    '''fits NearestNeighbors on kr_scaled
