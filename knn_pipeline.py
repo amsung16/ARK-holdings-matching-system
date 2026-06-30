@@ -137,6 +137,7 @@ def map_themes(df, sector_col, mapping_dict):
 
 def build_feature_matrix(df, features):
    '''selects feature columns, drops rows with nulls, returns clean DataFrame'''
+   return df[features].dropna().reset_index(drop=True)
 
 def scale_features(ark_df, kr_df, features):
     '''fits StandardScaler on ARK, transforms both
