@@ -1,3 +1,4 @@
+from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 import yfinance as yf
 import pandas as pd
@@ -185,3 +186,6 @@ def build_output(ark_df, kr_df, distances, indices):
 
 def export_results(df, path):
    '''writes output DataFrame to Excel'''
+   Path(path).parent.mkdir(parents=True, exist_ok=True)
+   df.to_excel(path, index=False)
+   print(f"Results exported to {path}")
