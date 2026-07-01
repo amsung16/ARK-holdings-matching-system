@@ -164,6 +164,24 @@ def run_knn(ark_scaled, kr_scaled, k=3):
 def build_output(ark_df, kr_df, distances, indices):
    '''combines ARK stock + 3 Korean matches + distance scores into one DataFrame
    adds ✓/⚠/✗ flag based on distance threshold'''
+   def _flag(d):
+      if d < 1.5:   return '✓'
+      if d < 3.0:   return '⚠'
+      return '✗'
+
+   rows = []
+   for i, ark_row in ark_df.iterrows():
+      for rank, (k_idx, dist) in enumerate(zip(indices[i], distances[i]), start=1):
+         kr_row = kr_df.iloc[k_idx]
+         rows.append({
+            'ark_sym':    ark_row.get('Sym', ark_row.name),
+            'kr_code':    kr_row.get('Code'),
+            'kr_company': kr_row.get('company'),
+            'distance':   round(float(dist), 4),
+            'rank':       rank,
+            'flag':       _flag(dist),
+         })
+   return pd.DataFrame(rows)
 
 def export_results(df, path):
    '''writes output DataFrame to Excel'''
