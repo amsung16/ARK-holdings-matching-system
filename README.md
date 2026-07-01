@@ -8,7 +8,7 @@ This system pulls ARK's 13F holdings, enriches them with fundamental data from y
 ```
 ├── raw-data/
 │   ├── 13F_ARK_Raw.csv          # Raw ARK 13F filing data
-│   └── ark_enriched.csv         # ARK holdings with fundamentals (per, pbr, market_cap, sector)
+│   └── ark_enriched.csv         # Engineered ARK holdings with fundamentals (per, pbr, market_cap, sector)
 ├── output/
 │   └── results.xlsx             # KNN match results
 ├── data_engineering.ipynb       # Feature engineering: cleans 13F data, fetches yfinance fundamentals
