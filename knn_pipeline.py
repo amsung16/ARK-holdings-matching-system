@@ -17,12 +17,14 @@ def get_ark_fundamentals(tickers):
          stock = yf.Ticker(ticker)
          info = stock.info
          record = {
-            'Sym': ticker,
-            'rev_growth': info.get('revenueGrowth'),
+            'Sym':          ticker,
+            'rev_growth':   info.get('revenueGrowth'),
             'gross_margin': info.get('grossMargins'),
-            'ps_ratio': info.get('priceToSalesTrailing12Months'),
-            'market_cap': info.get('marketCap'),
-            'sector': info.get('sector')
+            'ps_ratio':     info.get('priceToSalesTrailing12Months'),
+            'market_cap':   info.get('marketCap'),
+            'sector':       info.get('sector'),
+            'per':          info.get('trailingPE'),
+            'pbr':          info.get('priceToBook'),
          }
          records.append(record)
       except Exception as e:
