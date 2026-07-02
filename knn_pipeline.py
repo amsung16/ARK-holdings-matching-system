@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 import FinanceDataReader as fdr
+import os
 
 def get_ark_fundamentals(tickers):
    '''loops through ARK tickers, calls yfinance, 
@@ -72,6 +73,62 @@ def get_korean_fundamentals(kr_universe):
       except Exception:
          continue
    return pd.DataFrame(records)
+
+def get_korean_financials(kr_df):
+   '''fetches rev_growth and gross_margin for KOSPI stocks via DART OpenAPI.
+   Requires DART_API_KEY in .env or environment.
+   Merges results into kr_df and returns updated DataFrame.'''
+   from dotenv import load_dotenv
+   import dart_fss as dart
+
+   load_dotenv()
+   api_key = os.getenv('DART_API_KEY')
+   if not api_key:
+      raise EnvironmentError("DART_API_KEY not set. Get a free key at https://opendart.fss.or.kr/")
+   dart.set_api_key(api_key)
+
+   corp_list = dart.get_corp_list()
+
+   records = []
+   for _, row in tqdm(kr_df.iterrows(), total=len(kr_df), desc='Fetching DART financials'):
+      code = row['Code']
+      try:
+         corp = corp_list.find_by_stock_code(code)
+         if corp is None:
+            continue
+         # Annual report (11011), latest 2 years to compute growth
+         fs = corp.get_financial_statements(bsns_year='2024', reprt_code='11011', separate=False)
+         if fs is None:
+            continue
+         is_df = fs['IS'] if 'IS' in fs else fs.get('CIS')
+         if is_df is None:
+            continue
+         revenue_rows = is_df[is_df.index.str.contains('매출', na=False)]
+         cogs_rows    = is_df[is_df.index.str.contains('매출원가', na=False)]
+         if revenue_rows.empty:
+            continue
+         rev_curr = float(str(revenue_rows.iloc[0, 0]).replace(',', '') or 0)
+         rev_prev = float(str(revenue_rows.iloc[0, 1]).replace(',', '') or 0) if revenue_rows.shape[1] > 1 else None
+         rev_growth   = (rev_curr - rev_prev) / abs(rev_prev) if rev_prev else None
+         gross_margin = None
+         if not cogs_rows.empty and rev_curr:
+            cogs = float(str(cogs_rows.iloc[0, 0]).replace(',', '') or 0)
+            gross_margin = (rev_curr - cogs) / rev_curr
+         ps_ratio = row['market_cap'] / (rev_curr / 1e8) if rev_curr else None  # Marcap in KRW, revenue in 억원
+         records.append({
+            'Code':        code,
+            'rev_growth':  rev_growth,
+            'gross_margin': gross_margin,
+            'ps_ratio':    ps_ratio,
+         })
+      except Exception:
+         continue
+
+   if not records:
+      return kr_df
+
+   fin_df = pd.DataFrame(records)
+   return kr_df.merge(fin_df, on='Code', how='left')
 
 US_THEME_MAP = {
     'Technology':             'AI/Tech',
