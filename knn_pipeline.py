@@ -146,12 +146,28 @@ def build_feature_matrix(df, features):
    matrix = matrix.reset_index(drop=True)
    return matrix
 
-def scale_features(ark_df, kr_df, features):
+def encode_theme(ark_df, kr_df):
+   '''one-hot encodes the theme column using the union of both DataFrames themes
+   returns ark_df, kr_df with theme_* columns appended'''
+   all_themes = pd.concat([ark_df[['theme']], kr_df[['theme']]]).dropna()
+   dummies = pd.get_dummies(all_themes['theme'], prefix='theme')
+   ark_enc = pd.get_dummies(ark_df['theme'], prefix='theme').reindex(columns=dummies.columns, fill_value=0)
+   kr_enc  = pd.get_dummies(kr_df['theme'],  prefix='theme').reindex(columns=dummies.columns, fill_value=0)
+   return (pd.concat([ark_df.reset_index(drop=True), ark_enc], axis=1),
+           pd.concat([kr_df.reset_index(drop=True),  kr_enc],  axis=1))
+
+def scale_features(ark_df, kr_df, features, weights=None):
     '''fits StandardScaler on ARK, transforms both
-    returns ark_scaled, kr_scaled as numpy arrays'''
+    returns ark_scaled, kr_scaled as numpy arrays
+    weights: dict of {feature: multiplier} applied after scaling'''
+    import numpy as np
     scaler = StandardScaler()
     ark_scaled = scaler.fit_transform(ark_df[features])
     kr_scaled  = scaler.transform(kr_df[features])   # same scaler — do not refit
+    if weights:
+        w = np.array([weights.get(f, 1.0) for f in features])
+        ark_scaled = ark_scaled * w
+        kr_scaled  = kr_scaled  * w
     return ark_scaled, kr_scaled
 
 def run_knn(ark_scaled, kr_scaled, k=3):
