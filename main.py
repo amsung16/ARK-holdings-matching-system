@@ -5,6 +5,7 @@ from knn_pipeline import (
     run_knn, build_output, export_results,
     US_THEME_MAP, KR_THEME_MAP,
 )
+from evaluate import evaluate_matches, plot_distance_distribution
 
 NUMERIC_FEATURES = ['per', 'pbr', 'market_cap']
 
@@ -33,6 +34,9 @@ def main():
     output = build_output(ark_mat, kr_raw, distances, indices)
     export_results(output, 'output/results.xlsx')
     print(output)
+
+    evaluate_matches(output, ark_df, kr_df)
+    plot_distance_distribution(output)
 
 if __name__ == '__main__':
     main()
