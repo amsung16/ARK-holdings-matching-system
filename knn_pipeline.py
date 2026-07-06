@@ -74,9 +74,10 @@ def get_korean_fundamentals(kr_universe):
          continue
    return pd.DataFrame(records)
 
-def get_korean_financials(kr_df):
-   '''fetches rev_growth and gross_margin for KOSPI stocks via DART OpenAPI.
+def get_korean_financials(kr_df, cache_path='raw-data/kr_financials_cache.csv'):
+   '''fetches rev_growth, gross_margin, ps_ratio for KOSPI stocks via DART OpenAPI.
    Requires DART_API_KEY in .env or environment.
+   Results are cached to cache_path to avoid re-fetching on subsequent runs.
    Merges results into kr_df and returns updated DataFrame.'''
    from dotenv import load_dotenv
    import dart_fss as dart
@@ -87,48 +88,89 @@ def get_korean_financials(kr_df):
       raise EnvironmentError("DART_API_KEY not set. Get a free key at https://opendart.fss.or.kr/")
    dart.set_api_key(api_key)
 
+   # Load cache if it exists
+   cache_file = Path(cache_path)
+   if cache_file.exists():
+      cached = pd.read_csv(cache_file)
+      already_fetched = set(cached['Code'].astype(str))
+      to_fetch = kr_df[~kr_df['Code'].astype(str).isin(already_fetched)]
+      print(f"Cache hit: {len(already_fetched)} stocks. Fetching {len(to_fetch)} new stocks.")
+   else:
+      cached = pd.DataFrame()
+      to_fetch = kr_df
+
+   if to_fetch.empty:
+      return kr_df.merge(cached, on='Code', how='left')
+
    corp_list = dart.get_corp_list()
 
-   records = []
-   for _, row in tqdm(kr_df.iterrows(), total=len(kr_df), desc='Fetching DART financials'):
+   def _parse(val):
+      try: return float(str(val).replace(',', ''))
+      except: return None
+
+   def _get_row(df, label_col, label):
+      rows = df[df[label_col].astype(str) == label]
+      return rows.iloc[0] if not rows.empty else None
+
+   new_records = []
+   for _, row in tqdm(to_fetch.iterrows(), total=len(to_fetch), desc='Fetching DART financials'):
       code = row['Code']
       try:
          corp = corp_list.find_by_stock_code(code)
          if corp is None:
             continue
-         # Annual report (11011), latest 2 years to compute growth
-         fs = corp.get_financial_statements(bsns_year='2024', reprt_code='11011', separate=False)
-         if fs is None:
-            continue
-         is_df = fs['IS'] if 'IS' in fs else fs.get('CIS')
+         fs = corp.extract_fs(bgn_de='20230101')
+         stmts = fs._statements
+         # Try IS first, then CIS — pick whichever has 매출액
+         is_df = None
+         for key in ('is', 'cis'):
+            candidate = stmts.get(key)
+            if candidate is not None and not candidate.empty:
+               lk = [c for c in candidate.columns if 'label_ko' in str(c)]
+               if lk and (candidate[lk[0]].astype(str) == '매출액').any():
+                  is_df = candidate
+                  break
          if is_df is None:
             continue
-         revenue_rows = is_df[is_df.index.str.contains('매출', na=False)]
-         cogs_rows    = is_df[is_df.index.str.contains('매출원가', na=False)]
-         if revenue_rows.empty:
+
+         label_col = [c for c in is_df.columns if 'label_ko' in str(c)][0]
+         excl_set  = {c for c in is_df.columns if any(x in str(c) for x in ['label', 'concept', 'class'])}
+         val_cols  = [c for c in is_df.columns if c not in excl_set]
+         if len(val_cols) < 2:
             continue
-         rev_curr = float(str(revenue_rows.iloc[0, 0]).replace(',', '') or 0)
-         rev_prev = float(str(revenue_rows.iloc[0, 1]).replace(',', '') or 0) if revenue_rows.shape[1] > 1 else None
-         rev_growth   = (rev_curr - rev_prev) / abs(rev_prev) if rev_prev else None
-         gross_margin = None
-         if not cogs_rows.empty and rev_curr:
-            cogs = float(str(cogs_rows.iloc[0, 0]).replace(',', '') or 0)
-            gross_margin = (rev_curr - cogs) / rev_curr
-         ps_ratio = row['market_cap'] / (rev_curr / 1e8) if rev_curr else None  # Marcap in KRW, revenue in 억원
-         records.append({
-            'Code':        code,
-            'rev_growth':  rev_growth,
-            'gross_margin': gross_margin,
-            'ps_ratio':    ps_ratio,
-         })
+
+         rev_row = _get_row(is_df, label_col, '매출액')
+         gp_row  = _get_row(is_df, label_col, '매출총이익')
+         cg_row  = _get_row(is_df, label_col, '매출원가')
+         if rev_row is None:
+            continue
+
+         rev_curr     = _parse(rev_row[val_cols[0]])
+         rev_prev     = _parse(rev_row[val_cols[1]])
+         rev_growth   = (rev_curr - rev_prev) / abs(rev_prev) if rev_curr and rev_prev else None
+         gp           = _parse(gp_row[val_cols[0]]) if gp_row is not None else None
+         if gp is None and cg_row is not None:
+            cogs = _parse(cg_row[val_cols[0]])
+            gp   = rev_curr - cogs if rev_curr and cogs else None
+         gross_margin = gp / rev_curr if gp and rev_curr else None
+         ps_ratio     = (row['market_cap'] * 1350) / rev_curr if rev_curr and row['market_cap'] else None
+
+         new_records.append({'Code': code, 'rev_growth': rev_growth,
+                              'gross_margin': gross_margin, 'ps_ratio': ps_ratio})
       except Exception:
          continue
 
-   if not records:
-      return kr_df
+   new_df = pd.DataFrame(new_records)
+   if not new_df.empty:
+      combined = pd.concat([cached, new_df], ignore_index=True)
+      cache_file.parent.mkdir(parents=True, exist_ok=True)
+      combined.to_csv(cache_path, index=False)
+   else:
+      combined = cached
 
-   fin_df = pd.DataFrame(records)
-   return kr_df.merge(fin_df, on='Code', how='left')
+   if combined.empty:
+      return kr_df
+   return kr_df.merge(combined, on='Code', how='left')
 
 US_THEME_MAP = {
     'Technology':             'AI/Tech',
