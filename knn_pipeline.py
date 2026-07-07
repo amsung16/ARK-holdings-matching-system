@@ -337,7 +337,25 @@ def export_reverse_lookup(output_df, path):
    rank1_reverse = rank1_reverse.sort_values(['matched_by_n_ark_stocks', 'kr_code', 'distance'],
                                               ascending=[False, True, True]).reset_index(drop=True)
 
+   # Rank-1 + distance < 1.5 deduplicated sheet
+   close_df = output_df[(output_df['rank'] == 1) & (output_df['distance'] < 1.5)].copy()
+   portfolio_df = (
+      close_df.groupby(['kr_code', 'kr_company'], sort=False)
+      .agg(
+         ark_stocks=('ark_sym', lambda x: ', '.join(sorted(x))),
+         n_ark_stocks=('ark_sym', 'count'),
+         avg_distance=('distance', 'mean'),
+         min_distance=('distance', 'min'),
+      )
+      .reset_index()
+      .sort_values(['n_ark_stocks', 'avg_distance'], ascending=[False, True])
+      .reset_index(drop=True)
+   )
+   portfolio_df['avg_distance'] = portfolio_df['avg_distance'].round(4)
+   portfolio_df['min_distance'] = portfolio_df['min_distance'].round(4)
+
    with pd.ExcelWriter(path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
       reverse_df.to_excel(writer, sheet_name='Korean Stock → ARK Matches', index=False)
       rank1_reverse.to_excel(writer, sheet_name='Rank 1 Only', index=False)
+      portfolio_df.to_excel(writer, sheet_name='Portfolio (Rank1 < 1.5)', index=False)
    print(f"Reverse lookup sheets added to {path}")
