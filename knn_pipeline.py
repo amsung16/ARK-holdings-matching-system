@@ -329,6 +329,15 @@ def export_reverse_lookup(output_df, path):
    reverse_df = reverse_df.sort_values(['matched_by_n_ark_stocks', 'kr_code', 'distance'],
                                         ascending=[False, True, True]).reset_index(drop=True)
 
+   # Rank-1 only sheet
+   rank1_df = output_df[output_df['rank'] == 1].copy()
+   freq1    = rank1_df.groupby(['kr_code', 'kr_company']).size().reset_index(name='matched_by_n_ark_stocks')
+   rank1_reverse = rank1_df[['kr_code', 'kr_company', 'ark_sym', 'distance', 'flag']].copy()
+   rank1_reverse = rank1_reverse.merge(freq1, on=['kr_code', 'kr_company'], how='left')
+   rank1_reverse = rank1_reverse.sort_values(['matched_by_n_ark_stocks', 'kr_code', 'distance'],
+                                              ascending=[False, True, True]).reset_index(drop=True)
+
    with pd.ExcelWriter(path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
       reverse_df.to_excel(writer, sheet_name='Korean Stock → ARK Matches', index=False)
-   print(f"Reverse lookup sheet added to {path}")
+      rank1_reverse.to_excel(writer, sheet_name='Rank 1 Only', index=False)
+   print(f"Reverse lookup sheets added to {path}")
