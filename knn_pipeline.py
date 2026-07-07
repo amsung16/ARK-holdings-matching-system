@@ -306,3 +306,29 @@ def export_results(df, path):
    Path(path).parent.mkdir(parents=True, exist_ok=True)
    df.to_excel(path, index=False)
    print(f"Results exported to {path}")
+
+def export_reverse_lookup(output_df, path):
+   '''adds a second sheet to the Excel file showing, for each Korean stock,
+   all ARK stocks that matched to it — sorted by match frequency descending'''
+   freq = output_df.groupby(['kr_code', 'kr_company']).size().reset_index(name='matched_by_n_ark_stocks')
+
+   rows = []
+   for _, group in output_df.groupby(['kr_code', 'kr_company'], sort=False):
+      for _, r in group.sort_values('distance').iterrows():
+         rows.append({
+            'kr_code':               r['kr_code'],
+            'kr_company':            r['kr_company'],
+            'ark_sym':               r['ark_sym'],
+            'rank_in_ark_portfolio': r['rank'],
+            'distance':              r['distance'],
+            'flag':                  r['flag'],
+         })
+
+   reverse_df = pd.DataFrame(rows)
+   reverse_df = reverse_df.merge(freq, on=['kr_code', 'kr_company'], how='left')
+   reverse_df = reverse_df.sort_values(['matched_by_n_ark_stocks', 'kr_code', 'distance'],
+                                        ascending=[False, True, True]).reset_index(drop=True)
+
+   with pd.ExcelWriter(path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+      reverse_df.to_excel(writer, sheet_name='Korean Stock → ARK Matches', index=False)
+   print(f"Reverse lookup sheet added to {path}")

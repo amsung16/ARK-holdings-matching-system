@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from knn_pipeline import (
     get_korean_universe, get_korean_fundamentals, get_korean_financials,
     map_themes, encode_theme, build_feature_matrix, scale_features,
-    run_knn, build_output, export_results,
+    run_knn, build_output, export_results, export_reverse_lookup,
     US_THEME_MAP, KR_THEME_MAP,
 )
 from evaluate import evaluate_matches, plot_distance_distribution
@@ -46,6 +46,7 @@ def main():
 
     output = build_output(ark_mat, kr_raw, distances, indices)
     export_results(output, 'output/results.xlsx')
+    export_reverse_lookup(output, 'output/results.xlsx')
     print(output)
 
     evaluate_matches(output, ark_df, kr_df)
