@@ -40,7 +40,7 @@ def main():
     ark_mat      = build_feature_matrix(ark_df, FEATURES)
     kr_mat       = build_feature_matrix(kr_df,  FEATURES)
 
-    weights = {f: 2.0 for f in theme_cols}
+    weights = {f: 3.0 for f in theme_cols}
     ark_scaled, kr_scaled = scale_features(ark_mat, kr_mat, FEATURES, weights=weights)
     distances, indices    = run_knn(ark_scaled, kr_scaled, k=3)
 
