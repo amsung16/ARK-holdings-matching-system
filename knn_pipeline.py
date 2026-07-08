@@ -19,7 +19,6 @@ def get_ark_fundamentals(tickers):
          info = stock.info
          record = {
             'Sym':          ticker,
-            'rev_growth':   info.get('revenueGrowth'),
             'gross_margin': info.get('grossMargins'),
             'ps_ratio':     info.get('priceToSalesTrailing12Months'),
             'market_cap':   info.get('marketCap'),

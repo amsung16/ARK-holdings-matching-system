@@ -13,7 +13,7 @@ load_dotenv()
 USE_DART = bool(os.getenv('DART_API_KEY'))  # enrich Korean data if key is available
 
 NUMERIC_FEATURES = (
-    ['per', 'pbr', 'market_cap', 'rev_growth', 'gross_margin', 'ps_ratio']
+    ['per', 'pbr', 'market_cap', 'gross_margin', 'ps_ratio']
     if USE_DART else
     ['per', 'pbr', 'market_cap']
 )
