@@ -71,9 +71,6 @@ def get_fundamentals_as_of(sym, snapshot_date):
         market_cap = price * shares if shares else None
         ps_ratio   = market_cap / ttm_rev if market_cap and ttm_rev and ttm_rev != 0 else None
 
-        ttm_eps = ttm_ni / shares if ttm_ni and shares else None
-        per     = price / ttm_eps if ttm_eps and ttm_eps > 0 else None
-
         bps = book / shares if book and shares else None
         pbr = price / bps   if bps  and bps  > 0 else None
 
@@ -83,7 +80,6 @@ def get_fundamentals_as_of(sym, snapshot_date):
             'gross_margin': gross_margin,
             'ps_ratio':     ps_ratio,
             'market_cap':   market_cap,
-            'per':          per,
             'pbr':          pbr,
             'sector':       sector,
         }

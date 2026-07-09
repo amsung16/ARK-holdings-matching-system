@@ -23,7 +23,6 @@ def get_ark_fundamentals(tickers):
             'ps_ratio':     info.get('priceToSalesTrailing12Months'),
             'market_cap':   info.get('marketCap'),
             'sector':       info.get('sector'),
-            'per':          info.get('trailingPE'),
             'pbr':          info.get('priceToBook'),
          }
          records.append(record)
