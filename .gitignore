@@ -222,4 +222,7 @@ __marimo__/
 **/.DS_Store
 
 # Project-specific
-knn_viz.png
+.vscode/
+*.numbers
+output/distance_distribution.png
+output/forward_test.png
