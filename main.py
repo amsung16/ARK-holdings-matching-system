@@ -13,9 +13,9 @@ load_dotenv()
 USE_DART = bool(os.getenv('DART_API_KEY'))  # enrich Korean data if key is available
 
 NUMERIC_FEATURES = (
-    ['pbr', 'market_cap', 'gross_margin', 'ps_ratio']
+    ['market_cap', 'gross_margin', 'ps_ratio', 'rd_intensity', 'rev_growth']
     if USE_DART else
-    ['pbr', 'market_cap']
+    ['market_cap', 'ps_ratio']
 )
 
 def main():
@@ -44,7 +44,7 @@ def main():
     ark_scaled, kr_scaled = scale_features(ark_mat, kr_mat, FEATURES, weights=weights)
     distances, indices    = run_knn(ark_scaled, kr_scaled, k=3)
 
-    output = build_output(ark_mat, kr_raw, distances, indices)
+    output = build_output(ark_mat, kr_mat, distances, indices)
     export_results(output, 'output/results.xlsx')
     export_reverse_lookup(output, 'output/results.xlsx')
     print(output)

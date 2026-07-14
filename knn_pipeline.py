@@ -1,5 +1,4 @@
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler
 import yfinance as yf
 import pandas as pd
 import requests
@@ -183,7 +182,7 @@ US_THEME_MAP = {
 KR_THEME_MAP = {
     '반도체와반도체장비': 'AI/Tech',
     '전자장비와기기':     'AI/Tech',
-    'IT서비스':           'AI/Tech',
+    'IT서비스':           'Internet/SaaS',
     '소프트웨어':         'AI/Tech',
     '통신장비':           'AI/Tech',
     '디스플레이패널':     'AI/Tech',
@@ -227,6 +226,8 @@ KR_THEME_MAP = {
     '전기유틸리티':       'Energy/Climate',
     '가스유틸리티':       'Energy/Climate',
     '화학':               'Energy/Climate',
+    '복합기업':           'Defense/Industrial',
+    '담배':               'EV/Consumer',
 }
 
 def map_themes(df, sector_col, mapping_dict):
@@ -237,11 +238,17 @@ def map_themes(df, sector_col, mapping_dict):
    return df
 
 def build_feature_matrix(df, features):
-   '''selects feature columns, drops rows with nulls, returns clean DataFrame'''
-   matrix = df[features + ['Sym' if 'Sym' in df.columns else 'Code']].copy()
-   matrix = matrix.dropna(subset=features)
-   matrix = matrix.reset_index(drop=True)
-   return matrix
+   '''selects feature columns, drops rows where ALL numeric features are null, returns DataFrame.
+   Theme columns (always 0/1) are excluded from the all-null check — a stock with only theme
+   data but no numeric data would otherwise score distance=0 and steal rank 1 from real matches.
+   Partial numeric nulls are kept — nan_euclidean_distances handles them in run_knn.'''
+   id_col = 'Sym' if 'Sym' in df.columns else 'Code'
+   extra = [id_col] + (['company'] if 'company' in df.columns else [])
+   matrix = df[features + extra].copy()
+   numeric_feats = [f for f in features if not f.startswith('theme_')]
+   if numeric_feats:
+      matrix = matrix.dropna(subset=numeric_feats, how='all')
+   return matrix.reset_index(drop=True)
 
 def encode_theme(ark_df, kr_df):
    '''one-hot encodes the theme column using the union of both DataFrames themes
@@ -254,13 +261,20 @@ def encode_theme(ark_df, kr_df):
            pd.concat([kr_df.reset_index(drop=True),  kr_enc],  axis=1))
 
 def scale_features(ark_df, kr_df, features, weights=None):
-    '''fits StandardScaler on ARK, transforms both
-    returns ark_scaled, kr_scaled as numpy arrays
-    weights: dict of {feature: multiplier} applied after scaling'''
+    '''scales using ARK mean/std (ignoring NaN), transforms both, preserves NaN.
+    NaN values are left in place for nan_euclidean_distances in run_knn.
+    weights: dict of {feature: multiplier} applied after scaling.'''
     import numpy as np
-    scaler = StandardScaler()
-    ark_scaled = scaler.fit_transform(ark_df[features])
-    kr_scaled  = scaler.transform(kr_df[features])   # same scaler — do not refit
+    ark = ark_df[features].values.astype(float)
+    kr  = kr_df[features].values.astype(float)
+
+    mean = np.nanmean(ark, axis=0)
+    std  = np.nanstd(ark,  axis=0)
+    std  = np.where(std == 0, 1.0, std)  # avoid division by zero
+
+    ark_scaled = (ark - mean) / std
+    kr_scaled  = (kr  - mean) / std
+
     if weights:
         w = np.array([weights.get(f, 1.0) for f in features])
         ark_scaled = ark_scaled * w
@@ -268,13 +282,16 @@ def scale_features(ark_df, kr_df, features, weights=None):
     return ark_scaled, kr_scaled
 
 def run_knn(ark_scaled, kr_scaled, k=3):
-   '''fits NearestNeighbors on kr_scaled
-   queries with ark_scaled
-   returns distances, indices'''
-   from sklearn.neighbors import NearestNeighbors
-   nn = NearestNeighbors(n_neighbors=k, metric='euclidean')
-   nn.fit(kr_scaled)
-   distances, indices = nn.kneighbors(ark_scaled)
+   '''computes nan-aware euclidean distances from each ARK point to all Korean points,
+   returns top-k nearest Korean stocks per ARK stock.
+   Uses partial-distance strategy: computes distance on available dims only,
+   then rescales by p/p_available so points with different missingness are comparable.'''
+   import numpy as np
+   from sklearn.metrics.pairwise import nan_euclidean_distances
+   dists_full = nan_euclidean_distances(ark_scaled, kr_scaled)  # shape (n_ark, n_kr)
+   # Sort each ARK row and pick top-k Korean matches (ignoring inf/nan)
+   indices = np.argsort(dists_full, axis=1)[:, :k]
+   distances = np.take_along_axis(dists_full, indices, axis=1)
    return distances, indices
 
 def build_output(ark_df, kr_df, distances, indices):

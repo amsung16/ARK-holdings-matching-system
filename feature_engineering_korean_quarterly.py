@@ -128,44 +128,50 @@ def get_dart_fundamentals(corp, bgn_de, end_de, report_tp, snapshot_date, price,
     rev_row = _get_row(is_df, label_col_is, '매출액')
     gp_row  = _get_row(is_df, label_col_is, '매출총이익')
     cg_row  = _get_row(is_df, label_col_is, '매출원가')
-    ni_row  = _get_row(is_df, label_col_is, '당기순이익')
+    rd_row  = _get_row(is_df, label_col_is, '연구개발비')
 
     rev = _parse(rev_row[vc]) if rev_row is not None else None
     gp  = _parse(gp_row[vc])  if gp_row  is not None else None
     if gp is None and cg_row is not None:
         cogs = _parse(cg_row[vc])
         gp = rev - cogs if rev and cogs else None
-    ni = _parse(ni_row[vc]) if ni_row is not None else None
+    rd  = _parse(rd_row[vc])  if rd_row  is not None else None
 
     # Annualize to full-year equivalent
     factor  = 12 / months
     rev_ann = rev * factor if rev else None
-    ni_ann  = ni  * factor if ni  else None
 
     gross_margin = gp / rev if gp and rev else None
-    ps_ratio     = marcap / rev_ann if rev_ann and marcap else None  # both KRW → dimensionless ratio
+    ps_ratio     = marcap / rev_ann if rev_ann and marcap else None
+    rd_intensity = rd / rev if rd and rev and rev != 0 else None
 
-    # Book value from balance sheet for PBR
-    pbr = None
-    if bs_df is not None and not bs_df.empty:
-        label_col_bs = [c for c in bs_df.columns if 'label_ko' in str(c)]
-        if label_col_bs:
-            lk_bs = label_col_bs[0]
-            excl_bs = {c for c in bs_df.columns if any(x in str(c) for x in ['label', 'concept', 'class'])}
-            val_bs  = [c for c in bs_df.columns if c not in excl_bs]
-            if val_bs:
-                vc_bs = val_bs[0]
-                eq_row = _get_row(bs_df, lk_bs, '자본총계')
-                if price and marcap and eq_row is not None:
-                    shares = marcap / price
-                    equity = _parse(eq_row[vc_bs])
-                    bps    = equity / shares if equity and shares > 0 else None
-                    pbr    = price / bps if bps and bps > 0 else None
+    # Revenue growth: find prior-year column (same period length, one year earlier)
+    rev_growth = None
+    for prior_vc in val_cols:
+        if prior_vc == vc:
+            continue
+        prior_str = str(prior_vc)
+        try:
+            parts = prior_str.split("'")
+            date_range = [p for p in parts if '-' in p and len(p) == 17][0]
+            start_str, end_str = date_range.split('-', 1)
+            p_start = pd.Timestamp(start_str[:4]+'-'+start_str[4:6]+'-'+start_str[6:8])
+            p_end   = pd.Timestamp(end_str[:4]+'-'+end_str[4:6]+'-'+end_str[6:8])
+            p_months = (p_end.year - p_start.year) * 12 + (p_end.month - p_start.month) + 1
+            # Same period length but approximately one year earlier
+            if p_months == months and abs((p_end - pd.Timestamp(snapshot_date)).days) > 300:
+                prior_rev = _parse(rev_row[prior_vc]) if rev_row is not None else None
+                if prior_rev and prior_rev != 0 and rev:
+                    rev_growth = (rev - prior_rev) / abs(prior_rev)
+                break
+        except Exception:
+            continue
 
     return {
         'gross_margin': gross_margin,
         'ps_ratio':     ps_ratio,
-        'pbr':          pbr,
+        'rd_intensity': rd_intensity,
+        'rev_growth':   rev_growth,
     }
 
 

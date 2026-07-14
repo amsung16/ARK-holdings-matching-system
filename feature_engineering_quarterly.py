@@ -36,11 +36,21 @@ def get_fundamentals_as_of(sym, snapshot_date):
 
         # TTM: sum of last 4 quarters
         ttm4 = qf.iloc[:, :4]
-        ttm_rev  = ttm4.loc['Total Revenue'].sum()      if 'Total Revenue' in ttm4.index  else None
-        ttm_gp   = ttm4.loc['Gross Profit'].sum()       if 'Gross Profit'  in ttm4.index  else None
-        ttm_ni   = ttm4.loc['Net Income'].sum()         if 'Net Income'    in ttm4.index  else None
+        ttm_rev = ttm4.loc['Total Revenue'].sum() if 'Total Revenue' in ttm4.index else None
+        ttm_gp  = ttm4.loc['Gross Profit'].sum()  if 'Gross Profit'  in ttm4.index else None
+        ttm_rd  = ttm4.loc['Research And Development'].sum() if 'Research And Development' in ttm4.index else None
 
         gross_margin = ttm_gp / ttm_rev if ttm_gp and ttm_rev else None
+        rd_intensity = ttm_rd / ttm_rev if ttm_rd and ttm_rev and ttm_rev != 0 else None
+
+        # Revenue growth: prior-year TTM (quarters 5-8)
+        rev_growth = None
+        if ttm_rev and qf.shape[1] >= 8:
+            prior4 = qf.iloc[:, 4:8]
+            if 'Total Revenue' in prior4.index:
+                prior_rev = prior4.loc['Total Revenue'].sum()
+                if prior_rev and prior_rev != 0:
+                    rev_growth = (ttm_rev - prior_rev) / abs(prior_rev)
 
         # Shares outstanding (most recent quarter)
         shares = None
@@ -54,13 +64,6 @@ def get_fundamentals_as_of(sym, snapshot_date):
                     shares = float(qf.loc[lbl].iloc[0])
                     break
 
-        # Book value (most recent quarter)
-        book = None
-        for lbl in ('Common Stock Equity', 'Stockholders Equity'):
-            if lbl in qbs.index:
-                book = float(qbs.loc[lbl].iloc[0])
-                break
-
         # Price on snapshot_date
         end = (snap + pd.Timedelta(days=7)).strftime('%Y-%m-%d')
         hist = ticker.history(start=snapshot_date, end=end)
@@ -71,16 +74,14 @@ def get_fundamentals_as_of(sym, snapshot_date):
         market_cap = price * shares if shares else None
         ps_ratio   = market_cap / ttm_rev if market_cap and ttm_rev and ttm_rev != 0 else None
 
-        bps = book / shares if book and shares else None
-        pbr = price / bps   if bps  and bps  > 0 else None
-
         sector = ticker.info.get('sector')
 
         return {
             'gross_margin': gross_margin,
             'ps_ratio':     ps_ratio,
             'market_cap':   market_cap,
-            'pbr':          pbr,
+            'rd_intensity': rd_intensity,
+            'rev_growth':   rev_growth,
             'sector':       sector,
         }
 

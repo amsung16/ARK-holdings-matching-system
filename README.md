@@ -1,87 +1,132 @@
 # ARK Holdings Matching System
-A quantitative screening tool that finds the closest Korean (KOSPI 200) equivalents to Cathie Wood's ARK Investment holdings, using KNN similarity matching on shared financial features.
 
-## Overview
-This system pulls ARK's 13F holdings, enriches them with fundamental data from yfinance and DART (Korea's financial disclosure system), then matches each holding to the 3 most similar KOSPI 200 stocks using K-Nearest Neighbors (K=3, Euclidean distance). Matches are ranked by distance and flagged as ✓ (close), ⚠ (moderate), or ✗ (poor).
+Finds the closest Korean (KOSPI 200) equivalents to ARK Investment's holdings using KNN similarity matching on shared financial fundamentals.
 
-## Project Structure
+**The core idea:** Given ARK's quarterly 13F filing, which Korean large-cap stocks have the most similar financial profile (sector, gross margin, revenue growth, P/S ratio, market cap) to what ARK holds?
+
+---
+
+## Quickstart — Running a New Quarter
+
+When ARK releases a new 13F filing, running the pipeline takes two steps:
+
+### Step 1 — Download the ARK 13F CSV
+
+Go to [ARK's website](https://ark-funds.com/funds/arkk/) → Holdings → Download CSV for the quarter.  
+Save it to the `raw-data/` folder, e.g. `raw-data/ARK Q2 2026 13F.csv`.
+
+### Step 2 — Run the pipeline
+
+```bash
+python3 run_quarter.py --quarter Q2_2026 --ark_csv "raw-data/ARK Q2 2026 13F.csv"
 ```
-├── raw-data/
-│   ├── 13F_ARK_Raw.csv              # Raw ARK 13F filing data
-│   ├── ark_enriched.csv             # ARK holdings with full fundamentals
-│   └── kr_financials_cache.csv      # Cached DART financial data for KOSPI stocks
-├── output/
-│   ├── results.xlsx                 # KNN match results
-│   └── distance_distribution.png   # Histogram of rank-1 match distances
-├── data_engineering.ipynb           # Feature engineering: cleans 13F, fetches yfinance fundamentals
-├── knn_pipeline.py                  # All pipeline functions (data fetching, KNN, output)
-├── evaluate.py                      # Evaluation metrics and distance distribution plot
-├── main.py                          # Entry point: runs the full pipeline end-to-end
-├── .env.example                     # Template for environment variables
-└── requirements.txt
+
+That's it. The output will be saved to `output/results_Q2_2026.xlsx`.
+
+> **Note:** The Korean data fetch (Step 2/3) calls DART's API for ~200 stocks and takes around 20–30 minutes. Subsequent runs for the same quarter are instant because the data is cached.
+
+To reuse cached Korean data and skip the DART fetch:
+```bash
+python3 run_quarter.py --quarter Q2_2026 --ark_csv "raw-data/ARK Q2 2026 13F.csv" --skip_korean
 ```
+
+---
+
+## Output
+
+`output/results_{quarter}.xlsx` contains three sheets:
+
+| Sheet | Contents |
+|---|---|
+| **Portfolio** | Recommended Korean stocks ranked by suggested allocation (%), with the ARK holdings they matched |
+| **All Matches** | Full KNN output — every ARK stock with its top 3 Korean matches and distances |
+| **Korean → ARK** | Reverse lookup — given a Korean stock, which ARK holdings does it match |
+
+**Signal column:**
+- ✓ Good match (distance < 1.5) — included in portfolio
+- ⚠ Weak match (distance 1.5–3.0)
+- ✗ No match (distance > 3.0)
+
+---
+
+## Setup (first time only)
+
+**1. Install dependencies**
+```bash
+pip install -r requirements.txt
+```
+
+**2. Get a DART API key**  
+Register at [https://opendart.fss.or.kr](https://opendart.fss.or.kr) → Apply for API key (free).
+
+**3. Set up your `.env` file**
+```
+DART_API_KEY=your_key_here
+```
+
+---
 
 ## How It Works
-1. **Data Engineering** (`data_engineering.ipynb`) — filters ARK 13F to common stocks, fetches fundamentals via yfinance (PER, PBR, rev growth, gross margin, P/S ratio, market cap, sector), exports `ark_enriched.csv`
-2. **Korean Universe** — pulls KOSPI top 200 by market cap via FinanceDataReader
-3. **Korean Fundamentals** — scrapes PER, PBR, market cap, and sector for each KOSPI stock from Naver Finance; optionally enriches with rev growth, gross margin, P/S ratio from DART OpenAPI (cached to `kr_financials_cache.csv`)
-4. **Theme Mapping** — maps GICS sectors (US) and KRX sub-sectors (Korean) to 7 shared theme labels: AI/Tech, Genomics/Bio, EV/Consumer, Fintech, Defense/Industrial, Internet/SaaS, Energy/Climate
-5. **Feature Encoding** — theme labels are one-hot encoded and weighted 3x relative to numeric features
-6. **Feature Scaling** — StandardScaler fitted on ARK data, applied to both; Korean market cap converted KRW→USD
-7. **KNN Matching** — `NearestNeighbors(k=3, metric='euclidean')` fitted on KOSPI, queried with ARK
-8. **Evaluation** — theme match rate, distance stats, flag distribution, and distance histogram
-9. **Export** — results written to `output/results.xlsx`
 
-## Run
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+1. **ARK 13F** — Load the quarterly filing, filter to common stock only, fetch TTM fundamentals from yfinance (gross margin, P/S ratio, market cap, revenue growth) for each ticker
 
-# 2. (Optional) Set DART API key for richer Korean fundamentals
-cp .env.example .env
-# Edit .env and add your key from https://opendart.fss.or.kr/
+2. **Korean universe** — Top 200 KOSPI stocks by market cap. Sector data from Naver Finance, financial fundamentals from DART OpenAPI
 
-# 3. Run data engineering notebook to generate ark_enriched.csv
-jupyter notebook data_engineering.ipynb
+3. **Feature engineering** — Both sides share the same 5 features:
+   - `market_cap` (USD, KRW converted at 1350)
+   - `gross_margin` (TTM gross profit / revenue)
+   - `ps_ratio` (market cap / TTM revenue)
+   - `rev_growth` (YoY revenue growth)
+   - `rd_intensity` (R&D spend / revenue, where available)
+   - Plus one-hot encoded sector theme (weighted 3×)
 
-# 4. Run the full pipeline
-python main.py
+4. **KNN matching** — For each ARK stock, find the 3 closest Korean stocks using nan-aware Euclidean distance. Sector alignment is weighted 3× to ensure thematic similarity
+
+5. **Portfolio construction** — Korean stocks that are the closest match (rank 1) to at least one ARK holding, within distance threshold. Allocation weight = sum of ARK's % allocations for all matched holdings, normalized to 100%
+
+---
+
+## Project Structure
+
+```
+├── run_quarter.py                  ← Main entry point (use this)
+│
+├── raw-data/
+│   ├── ARK ... 13F.csv             ← Downloaded ARK 13F filings
+│   ├── ark_enriched_{Q}.csv        ← Cached ARK fundamentals per quarter
+│   └── kr_fundamentals_{Q}.csv     ← Cached Korean fundamentals per quarter
+│
+├── output/
+│   ├── results_{Q}.xlsx            ← Match results and portfolio
+│   ├── backtest_portfolio.xlsx     ← Historical backtest portfolio detail
+│   ├── backtest_result.png         ← Backtest chart
+│   └── nav_history.csv             ← Daily NAV history
+│
+├── knn_pipeline.py                 ← Core KNN logic and data fetching
+├── feature_engineering_quarterly.py       ← ARK fundamentals (yfinance)
+├── feature_engineering_korean_quarterly.py ← Korean fundamentals (DART)
+├── backtest.py                     ← Walk-forward backtest (optional)
+├── main.py                         ← Current-snapshot pipeline (optional)
+└── evaluate.py                     ← Match quality metrics (optional)
 ```
 
-## Features Used for Matching
-| Feature | ARK Source | Korean Source | Weight |
+---
+
+## Quarterly Schedule
+
+ARK files 13F reports 45 days after each quarter ends:
+
+| Quarter | Period Ends | 13F Available ~| Run Pipeline |
 |---|---|---|---|
-| `per` | yfinance `trailingPE` | Naver Finance | 1x |
-| `pbr` | yfinance `priceToBook` | Naver Finance | 1x |
-| `market_cap` | yfinance | Naver Finance (KRW→USD) | 1x |
-| `rev_growth` | yfinance `revenueGrowth` | DART income statement | 1x |
-| `gross_margin` | yfinance `grossMargins` | DART income statement | 1x |
-| `ps_ratio` | yfinance `priceToSalesTrailing12Months` | DART-computed | 1x |
-| `theme_*` (7 binary) | GICS sector → theme map | KRX sub-sector → theme map | **3x** |
+| Q1 | March 31 | May 15 | May 15 onward |
+| Q2 | June 30 | August 14 | August 14 onward |
+| Q3 | September 30 | November 14 | November 14 onward |
+| Q4 | December 31 | February 14 | February 14 onward |
 
-`rev_growth`, `gross_margin`, `ps_ratio` require a DART API key. Without it, only `per`, `pbr`, `market_cap` are used.
+---
 
-## Evaluation Results (with DART, 3x theme weight)
-| Metric | Value |
-|---|---|
-| ARK stocks matched | 88 |
-| Theme match rate (rank 1) | 39.8% |
-| Coverage (≥1 ✓ match) | 52.3% |
-| ✓ flags | 36.4% |
-| ⚠ flags | 29.5% |
-| ✗ flags | 34.1% |
-| Rank-1 distance mean | 2.72 |
+## Important Notes
 
-## Limitations
-- Korean fundamentals scraped from Naver Finance may break if Naver changes their HTML structure
-- DART financial data takes ~40 min for 200 stocks on first run; subsequent runs use cache
-- Holding companies and preferred shares often lack DART income statement data and are excluded
-- ~4 ARK tickers (PSTG, THAR, VLDXD, AXL) are not on yfinance and excluded
-- No ground truth labels — theme match rate and distance are internal consistency metrics, not true accuracy
-
-## Sources
-- ARK 13F filings: SEC EDGAR
-- US fundamentals: [yfinance](https://github.com/ranaroussi/yfinance)
-- Korean stock universe: [FinanceDataReader](https://github.com/financedata-org/FinanceDataReader)
-- Korean fundamentals: [Naver Finance](https://finance.naver.com)
-- Korean financial statements: [DART OpenAPI](https://opendart.fss.or.kr/) via [dart-fss](https://github.com/dart-fss/dart-fss)
+- This tool finds **structurally similar** Korean stocks to ARK's holdings — stocks in the same sector with similar financials. It does not predict returns or guarantee that the strategy replicates ARK's performance.
+- ARK's US holdings tend to be earlier-stage and higher-growth than their KOSPI 200 equivalents. The matches are the closest available within the Korean large-cap investable universe.
+- Korean data coverage is ~85–100 stocks per quarter (out of 200) due to DART API availability.
